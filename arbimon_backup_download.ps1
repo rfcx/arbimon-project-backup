@@ -264,7 +264,7 @@ function GateWait {
 }
 
 # Run curl.exe; returns @{ Code; Rc; Headers }.
-function Curl([string[]]$extra, [string]$url) {
+function Invoke-Curl([string[]]$extra, [string]$url) {
     if (Test-Path -LiteralPath $Hdr) { Remove-Item -LiteralPath $Hdr -Force }
     $cargs = @("-sS", "-A", $UA, "-H", "Accept: */*", "--connect-timeout", "30", "--speed-time", "$Timeout", "--speed-limit", "1", "-D", $Hdr) + $extra + @($url)
     $eap = $ErrorActionPreference; $ErrorActionPreference = "Continue"
@@ -291,12 +291,12 @@ if ($DryRun) {
     $todo = $Total - $Already
     $cands = @($Items | Where-Object { $_.UK -eq "media" -and -not $Done.ContainsKey("$($_.Kind)`t$($_.Id)") })
     $s = [math]::Min($Sample, $cands.Count)
-    $sample = @(); for ($i = 1; $i -le $s; $i++) { $sample += $cands[[int][math]::Floor(($i - 0.5) * $cands.Count / $s)] }
-    if ($sample.Count) { Say ("Checking the size of {0} sample files (one request every {1} seconds)..." -f $sample.Count, (Fmt $Interval)) }
+    $picks = @(); for ($i = 1; $i -le $s; $i++) { $picks += $cands[[int][math]::Floor(($i - 0.5) * $cands.Count / $s)] }
+    if ($picks.Count) { Say ("Checking the size of {0} sample files (one request every {1} seconds)..." -f $picks.Count, (Fmt $Interval)) }
     $sum = 0.0; $got = 0
-    foreach ($it in $sample) {
+    foreach ($it in $picks) {
         GateWait
-        $r = Curl @("-I", "-o", "NUL") $it.Url
+        $r = Invoke-Curl @("-I", "-o", "NUL") $it.Url
         if ($r.Code -eq 401) { Say $ExpiredMessage; Remove-Item -Recurse -Force $Work; exit 3 }
         if ($r.Code -eq 200 -and $r.Headers["content-length"] -match '^\d+$') { $sum += [double]$r.Headers["content-length"]; $got++ }
     }
@@ -331,7 +331,7 @@ function Fetch($it) {
         GateWait
         $offset = 0; if (Test-Path -LiteralPath $part) { $offset = (Get-Item -LiteralPath $part).Length }
         if (Test-Path -LiteralPath $next) { Remove-Item -LiteralPath $next -Force }
-        if ($offset -gt 0) { $r = Curl @("-r", "$offset-", "-o", $next) $it.Url } else { $r = Curl @("-o", $next) $it.Url }
+        if ($offset -gt 0) { $r = Invoke-Curl @("-r", "$offset-", "-o", $next) $it.Url } else { $r = Invoke-Curl @("-o", $next) $it.Url }
         $got = 0; if (Test-Path -LiteralPath $next) { $got = (Get-Item -LiteralPath $next).Length }
         $rc = $r.Rc
         if ($r.Code -eq 200 -and $got -gt 0) { Move-Item -LiteralPath $next -Destination $part -Force }
@@ -381,7 +381,7 @@ function Fetch($it) {
     if (-not $name) { $name = SafeName (QueryParam $it.Url "download-name") }
     if (-not $name) { $name = SafeName $it.Fallback }
     if (-not $name) { $name = $idn }
-    $total = (Get-Item -LiteralPath $part).Length
+    $fileSize = (Get-Item -LiteralPath $part).Length
     $dot = $name.LastIndexOf(".")
     if ($dot -gt 0) { $stem = $name.Substring(0, $dot); $ext = $name.Substring($dot) } else { $stem = $name; $ext = "" }
     $key = "$($it.Kind)`t$($it.Id)"
@@ -391,7 +391,7 @@ function Fetch($it) {
         if ($owner -and $owner -ne $key) { continue }
         $final = Join-Path $OutAbs $relc
         if ((Test-Path -LiteralPath $final) -and -not $owner) {
-            $same = ((Get-Item -LiteralPath $final).Length -eq $total) -and ((Get-FileHash -LiteralPath $final).Hash -eq (Get-FileHash -LiteralPath $part).Hash)
+            $same = ((Get-Item -LiteralPath $final).Length -eq $fileSize) -and ((Get-FileHash -LiteralPath $final).Hash -eq (Get-FileHash -LiteralPath $part).Hash)
             if ($same) { Remove-Item -LiteralPath $part -Force; $rel = $relc; break }
             if ($cand -eq $name) { continue }
         }
@@ -400,9 +400,9 @@ function Fetch($it) {
     }
     if (-not $rel) { Problem $it "failed" "could not find a free file name"; return }
     $Claimed[$rel.ToLowerInvariant()] = $key; $Done[$key] = $rel
-    [IO.File]::AppendAllText($State, "$($it.Kind)`t$($it.Id)`t$rel`t$total`n", $Utf8)
+    [IO.File]::AppendAllText($State, "$($it.Kind)`t$($it.Id)`t$rel`t$fileSize`n", $Utf8)
     $C["downloaded"]++
-    Say ("  {0} ({1}) - {2}/{3} - about {4} left" -f $rel, (HumanBytes $total), ($script:DoneN + 1), $Total, (HumanDuration (($Total - $script:DoneN - 1) * $Interval)))
+    Say ("  {0} ({1}) - {2}/{3} - about {4} left" -f $rel, (HumanBytes $fileSize), ($script:DoneN + 1), $Total, (HumanDuration (($Total - $script:DoneN - 1) * $Interval)))
 }
 
 Say "Saving to $OutAbs. Press Ctrl+C to stop; run again to resume."
