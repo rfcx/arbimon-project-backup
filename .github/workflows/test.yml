@@ -17,7 +17,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Tools that ship with the OS
         run: |
-          bash --version | head -1; curl --version | head -1; awk --version 2>/dev/null | head -1 || awk -W version 2>/dev/null | head -1
+          /bin/bash --version | head -1
+          curl --version | head -1
       - name: Syntax check with the system bash (macOS = bash 3.2)
         run: /bin/bash -n arbimon_backup_download.sh
       - name: Behaviour tests (bash script)
@@ -25,30 +26,40 @@ jobs:
       - name: Script prints its version
         run: bash arbimon_backup_download.sh --version
 
-  powershell:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            shell: powershell   # Windows PowerShell 5.1, what every Windows 10/11 has
-          - os: windows-latest
-            shell: pwsh         # PowerShell 7
-    runs-on: ${{ matrix.os }}
+  windows-powershell-5:
+    # Windows PowerShell 5.1: what every Windows 10/11 has out of the box
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: powershell
     steps:
       - uses: actions/checkout@v4
       - name: Tools that ship with Windows
-        shell: ${{ matrix.shell }}
         run: |
           $PSVersionTable.PSVersion.ToString()
           (Get-Command curl.exe).Source
           curl.exe --version | Select-Object -First 1
       - name: Behaviour tests (PowerShell script)
-        shell: ${{ matrix.shell }}
         env:
           ABD_SCRIPT: ps1
-          ABD_PWSH: ${{ matrix.shell }}
+          ABD_PWSH: powershell
         run: python -m unittest discover -s tests -v
       - name: Script prints its version
-        shell: ${{ matrix.shell }}
-        run: .\arbimon_backup_download.ps1 -Version
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File .\arbimon_backup_download.ps1 -Version
+
+  windows-powershell-7:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          $PSVersionTable.PSVersion.ToString()
+          curl.exe --version | Select-Object -First 1
+      - name: Behaviour tests (PowerShell script)
+        env:
+          ABD_SCRIPT: ps1
+          ABD_PWSH: pwsh
+        run: python -m unittest discover -s tests -v
