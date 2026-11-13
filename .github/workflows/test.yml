@@ -4,27 +4,51 @@ on:
   push:
   pull_request:
 
+# The scripts need nothing but the operating system. Python appears here ONLY to run the
+# test harness (a local fake of Arbimon's servers); users never need it.
 jobs:
-  unittest:
+  bash:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ["3.9", "3.13"]
-        exclude:
-          # ubuntu-latest no longer ships Python 3.9; test 3.9 on Linux with ubuntu-22.04 instead
-          - os: ubuntu-latest
-            python: "3.9"
-        include:
-          - os: ubuntu-22.04
-            python: "3.9"
+        os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python }}
-      - name: Run the tests (standard library only, no install step)
-        run: python -m unittest -v test_arbimon_backup_download
-      - name: Script runs and prints its version
-        run: python arbimon_backup_download.py --version
+      - name: Tools that ship with the OS
+        run: |
+          bash --version | head -1; curl --version | head -1; awk --version 2>/dev/null | head -1 || awk -W version 2>/dev/null | head -1
+      - name: Syntax check with the system bash (macOS = bash 3.2)
+        run: /bin/bash -n arbimon_backup_download.sh
+      - name: Behaviour tests (bash script)
+        run: python3 -m unittest discover -s tests -v
+      - name: Script prints its version
+        run: bash arbimon_backup_download.sh --version
+
+  powershell:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            shell: powershell   # Windows PowerShell 5.1, what every Windows 10/11 has
+          - os: windows-latest
+            shell: pwsh         # PowerShell 7
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools that ship with Windows
+        shell: ${{ matrix.shell }}
+        run: |
+          $PSVersionTable.PSVersion.ToString()
+          (Get-Command curl.exe).Source
+          curl.exe --version | Select-Object -First 1
+      - name: Behaviour tests (PowerShell script)
+        shell: ${{ matrix.shell }}
+        env:
+          ABD_SCRIPT: ps1
+          ABD_PWSH: ${{ matrix.shell }}
+        run: python -m unittest discover -s tests -v
+      - name: Script prints its version
+        shell: ${{ matrix.shell }}
+        run: .\arbimon_backup_download.ps1 -Version
