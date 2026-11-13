@@ -286,6 +286,24 @@ class TestFailureModes(Base):
         code, out = self.run_script()
         self.assertIn("already downloaded:      2", out)
 
+    def test_name_owned_by_another_item_is_not_reused(self):
+        # Item 2 was downloaded as x.flac and the user then moved that file away. On the next run item 1 (same name,
+        # same site, earlier in the CSV) must NOT take x.flac: x.flac belongs to item 2 in the progress record, and
+        # item 2 is about to be downloaded back into it, which would overwrite item 1's audio.
+        b = self.base
+        write_csv(os.path.join(self.backup, "recordings.0001.csv"), REC_HEADER, [
+            rec(2, 3, "2026-01-01 00:01:00", media(b, "/internal/n/2.flac", "x.flac"))])
+        code, out = self.run_script()
+        self.assertEqual(code, 0, out)
+        os.remove(os.path.join(self.out, "recordings/3/x.flac"))
+        write_csv(os.path.join(self.backup, "recordings.0001.csv"), REC_HEADER, [
+            rec(1, 3, "2026-01-01 00:00:00", media(b, "/internal/n/1.flac", "x.flac")),
+            rec(2, 3, "2026-01-01 00:01:00", media(b, "/internal/n/2.flac", "x.flac"))])
+        code, out = self.run_script()
+        self.assertEqual(code, 0, out)
+        self.assertEqual(read_bytes(os.path.join(self.out, "recordings/3/x.flac")), fs.body_for("/internal/n/2.flac"))
+        self.assertEqual(read_bytes(os.path.join(self.out, "recordings/3/x__1.flac")), fs.body_for("/internal/n/1.flac"))
+
     def test_unsafe_names_are_cleaned(self):
         b = self.base
         write_csv(os.path.join(self.backup, "recordings.0001.csv"), REC_HEADER, [
